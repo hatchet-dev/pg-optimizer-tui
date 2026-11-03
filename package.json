@@ -1,0 +1,33 @@
+{
+  "name": "pg-optimizer-demo",
+  "private": true,
+  "description": "Four Claude agents race to speed up a slow Postgres query, each in its own sandbox, orchestrated by Hatchet durable tasks.",
+  "packageManager": "pnpm@12.8.1",
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "image": "docker build -t pgrace-seed:shop dataset",
+    "worker": "tsx --env-file-if-exists=.env src/worker.ts",
+    "web": "tsx --env-file-if-exists=.env src/server.ts",
+    "tui": "tsx --env-file-if-exists=.env src/tui/main.tsx",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0",
+    "@hatchet-dev/sandbox": "0.1.0",
+    "@hatchet-dev/typescript-sdk": "1.44.0",
+    "express": "5.3.0",
+    "ink": "7.1.1",
+    "react": "19.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.0.0",
+    "@types/react": "19.3.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

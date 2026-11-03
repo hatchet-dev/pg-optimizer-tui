@@ -1,0 +1,7 @@
+node_modules/
+.env
+.DS_Store
+.idea/
+# live races record themselves here; only the sample replay is committed
+recordings/*.jsonl
+!recordings/205e0931.jsonl

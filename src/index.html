@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Query Race</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --paper: #f4f6f8;
+  --card: #ffffff;
+  --ink: #17202a;
+  --muted: #5d6b78;
+  --rule: #d9dfe5;
+  --accent: #2d5bd7;
+  --good: #1f7a4a;
+  --bad: #b3261e;
+  --c0: #8a6d00;
+  --c1: #2d5bd7;
+  --c2: #0f7f7a;
+  --c3: #9b3fb5;
+  --sans: "Instrument Sans", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #10161c; --card: #172029; --ink: #e2e8ee; --muted: #93a2b0; --rule: #2a3541;
+    --accent: #7fa2ff; --good: #5fcf8f; --bad: #ff8a80;
+    --c0: #e0b93a; --c1: #7fa2ff; --c2: #4fd1c5; --c3: #d18ae8;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--sans); }
+main { max-width: 1400px; margin: 0 auto; padding: 20px 20px 60px; display: grid; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 20px; }
+h1 { font-size: 22px; margin: 0; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 15px; margin: 0; font-weight: 600; }
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+button { font: 600 13px var(--sans); border: 1px solid var(--accent); background: var(--accent); color: var(--card); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, pre { font-family: var(--mono); font-size: 12px; }
+pre { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.panel { background: var(--card); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; }
+.query pre { color: var(--ink); }
+.stat { display: flex; gap: 24px; margin-top: 10px; flex-wrap: wrap; }
+.stat b { display: block; font: 600 22px var(--sans); font-variant-numeric: tabular-nums; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: 1px; }
+.dot.live { background: var(--good); }
+#chart svg { width: 100%; height: auto; display: block; color: var(--muted); }
+.lanes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.lane { display: grid; grid-template-rows: auto auto 1fr auto; gap: 8px; height: 640px; border-top: 3px solid var(--lane); }
+.lane-head { display: flex; align-items: baseline; gap: 8px; }
+.lane-head h2 { color: var(--lane); }
+.best { margin-left: auto; font: 600 18px var(--sans); font-variant-numeric: tabular-nums; }
+.brief { font-size: 12px; color: var(--muted); }
+.status { font-size: 12px; color: var(--muted); }
+.log { overflow-y: auto; display: grid; align-content: start; gap: 6px; min-height: 0; border-top: 1px solid var(--rule); padding-top: 8px; }
+.entry { font-size: 12px; min-width: 0; }
+.entry.thinking { color: var(--muted); font-style: italic; }
+.entry.message { }
+.entry.steer { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 4px; padding: 4px 6px; }
+.entry details > summary { cursor: pointer; list-style: none; }
+.entry details > summary::-webkit-details-marker { display: none; }
+.sql { border: 1px solid var(--rule); border-radius: 4px; padding: 6px; display: grid; gap: 4px; }
+.sql .tag { font: 600 11px var(--sans); color: var(--muted); display: flex; gap: 6px; }
+.sql .tag .ms { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.sql .tag .err { color: var(--bad); }
+.sql pre.out { color: var(--muted); max-height: 160px; overflow: auto; }
+.steer-form { display: flex; gap: 6px; }
+.steer-form input { flex: 1; min-width: 0; font: 13px var(--sans); padding: 5px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); }
+.pill { font: 600 11px var(--sans); border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; }
+.pill.good { color: var(--good); }
+.pill.bad { color: var(--bad); }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+th { font-weight: 500; color: var(--muted); font-size: 12px; }
+td.num { text-align: right; }
+.board-wrap { overflow-x: auto; }
+.result { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+.result pre { background: var(--paper); border-radius: 6px; padding: 10px; max-height: 360px; overflow: auto; }
+.empty { padding: 40px 0; text-align: center; color: var(--muted); }
+@media (max-width: 1100px) { .lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .lanes, .top, .result { grid-template-columns: minmax(0, 1fr); } .lane { height: 480px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Query race</h1>
+    <span class="muted" id="task">Four agents, four strategies, one slow Postgres query.</span>
+    <span class="spacer"></span>
+    <span class="muted" id="conn"><span class="dot"></span>Not connected</span>
+    <button id="start">Start a race</button>
+  </header>
+
+  <div id="empty" class="panel empty">Start a race to watch four agents optimize the same query, each in its own Postgres sandbox.</div>
+
+  <div id="race" hidden>
+    <div style="display:grid;gap:18px">
+      <section class="top">
+        <div class="panel query">
+          <h2>The query</h2>
+          <pre id="query" style="margin-top:8px"></pre>
+          <div class="stat">
+            <div><span class="muted">Original, as judged</span><b id="base-ms">…</b></div>
+            <div><span class="muted">Rows</span><b id="base-rows">…</b></div>
+            <div><span class="muted">Race</span><b id="race-status" style="font-size:15px;font-weight:500">Starting</b></div>
+          </div>
+        </div>
+        <div class="panel" id="chart">
+          <h2>Best time each agent has measured</h2>
+          <div id="chart-svg" style="margin-top:6px"></div>
+        </div>
+      </section>
+
+      <section class="lanes" id="lanes"></section>
+
+      <section class="panel" id="board" hidden>
+        <h2>Judge's verdicts</h2>
+        <p class="muted" style="margin:4px 0 8px">Each submission ran on a fresh copy of the database, one judge at a time. Rows must match the original exactly.</p>
+        <div class="board-wrap"><table>
+          <thead><tr><th>#</th><th>Agent</th><th>Notes</th><th class="num">Median</th><th class="num">Speed-up</th><th>Rows</th><th class="num">New indexes</th><th></th></tr></thead>
+          <tbody id="board-rows"></tbody>
+        </table></div>
+      </section>
+
+      <section class="panel" id="result" hidden>
+        <h2 id="result-title"></h2>
+        <div class="result" style="margin-top:10px">
+          <div><div class="muted">Migration</div><pre id="result-migration"></pre><div class="muted" style="margin-top:10px">Query</div><pre id="result-query"></pre></div>
+          <div><div class="muted">Plan, as judged</div><pre id="result-plan"></pre></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const fmtMs = (ms) => ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : ms >= 10 ? `${Math.round(ms)} ms` : `${ms.toFixed(1)} ms`;
+const fmtBytes = (b) => !b ? '—' : b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.round(b / 1024)} kB`;
+const el = (tag, attrs = {}, ...children) => {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) k === 'class' ? (node.className = v) : node.setAttribute(k, v);
+  for (const c of children) if (c != null) node.append(c);
+  return node;
+};
+
+let state;
+let source;
+
+function reset(raceId) {
+  state = { raceId, seen: new Set(), candidates: [], lanes: {}, points: {}, baseline: null, verdicts: {}, submissions: {}, ranking: null, result: null };
+  $('lanes').replaceChildren();
+  $('board').hidden = true;
+  $('result').hidden = true;
+  $('base-ms').textContent = '…';
+  $('base-rows').textContent = '…';
+  $('race-status').textContent = 'Starting';
+  $('chart-svg').replaceChildren();
+}
+
+function lane(k) {
+  if (state.lanes[k]) return state.lanes[k];
+  const c = state.candidates[k];
+  const log = el('div', { class: 'log' });
+  const status = el('div', { class: 'status' }, 'Waiting to start');
+  const best = el('span', { class: 'best' }, '');
+  const input = el('input', { id: `steer-${k}`, placeholder: `Message ${c.label}…`, maxlength: '500' });
+  const form = el('form', { class: 'steer-form' }, input, el('button', { class: 'ghost', type: 'submit' }, 'Send'));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    await fetch(`/api/races/${state.raceId}/steer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidate: k, text }) });
+  });
+  const node = el('div', { class: 'panel lane', style: `--lane: var(--c${k})` },
+    el('div', {}, el('div', { class: 'lane-head' }, el('h2', {}, c.label), best), el('div', { class: 'brief' }, c.brief)),
+    status, log, form);
+  $('lanes').append(node);
+  return (state.lanes[k] = { node, log, status, best, form });
+}
+
+function append(k, node) {
+  const { log } = lane(k);
+  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  log.append(node);
+  if (atBottom) log.scrollTop = log.scrollHeight;
+}
+
+function clipText(text, n) { return text.length > n ? `${text.slice(0, n)}…` : text; }
+
+function handle(ev) {
+  if (state.seen.has(ev.id)) return; // a replayed task publishes again; the id is the same
+  state.seen.add(ev.id);
+  switch (ev.type) {
+    case 'race':
+      $('task').textContent = ev.task;
+      $('query').textContent = ev.query;
+      state.candidates = ev.candidates;
+      ev.candidates.forEach((c) => lane(c.k));
+      drawChart();
+      break;
+    case 'baseline':
+      state.baseline = ev.verdict;
+      $('base-ms').textContent = fmtMs(ev.verdict.medianMs);
+      $('base-rows').textContent = ev.verdict.rows;
+      drawChart();
+      break;
+    case 'status':
+      if (ev.k == null) $('race-status').textContent = ev.text;
+      else lane(ev.k).status.textContent = ev.text;
+      break;
+    case 'thinking': {
+      const d = el('details', {}, el('summary', {}, clipText(ev.text.replace(/\s+/g, ' '), 140)), el('div', {}, ev.text));
+      append(ev.k, el('div', { class: 'entry thinking' }, d));
+      break;
+    }
+    case 'message':
+      append(ev.k, el('div', { class: 'entry message' }, ev.text));
+      break;
+    case 'steer':
+      append(ev.k, el('div', { class: 'entry steer' }, el('b', {}, 'You: '), ev.text));
+      break;
+    case 'sql': {
+      const tag = el('div', { class: 'tag' }, ev.kind === 'migration' ? 'Migration' : 'Query',
+        ev.exitCode ? el('span', { class: 'err' }, `failed (exit ${ev.exitCode})`) : null,
+        ev.ms != null ? el('span', { class: 'ms' }, fmtMs(ev.ms)) : null);
+      const out = el('details', {}, el('summary', { class: 'muted' }, 'Output'), el('pre', { class: 'out' }, ev.output));
+      append(ev.k, el('div', { class: 'entry sql' }, tag, el('pre', {}, clipText(ev.sql.trim(), 600)), out));
+      if (ev.ms != null && !ev.exitCode) {
+        (state.points[ev.k] ??= []).push(ev.ms);
+        const best = Math.min(...state.points[ev.k]);
+        lane(ev.k).best.textContent = fmtMs(best);
+        drawChart();
+      }
+      break;
+    }
+    case 'submit':
+      state.submissions[ev.k] = ev.submission;
+      append(ev.k, el('div', { class: 'entry message' }, el('b', {}, 'Submitted. '), ev.submission.notes));
+      lane(ev.k).form.querySelector('button').disabled = true;
+      break;
+    case 'verdict': {
+      state.verdicts[ev.k] = ev.verdict;
+      const v = ev.verdict;
+      const pill = !v.ok ? el('span', { class: 'pill bad' }, 'Failed') : v.matches ? el('span', { class: 'pill good' }, `Correct, ${fmtMs(v.medianMs)}`) : el('span', { class: 'pill bad' }, `Wrong rows (${v.rows})`);
+      append(ev.k, el('div', { class: 'entry' }, el('b', {}, 'Judge: '), pill));
+      lane(ev.k).status.textContent = 'Judged';
+      drawBoard();
+      break;
+    }
+    case 'ranking':
+      state.ranking = ev.ranking;
+      drawBoard();
+      break;
+    case 'result':
+      state.result = ev;
+      drawBoard();
+      drawResult();
+      $('race-status').textContent = 'Finished';
+      break;
+  }
+}
+
+function drawChart() {
+  const W = 640, H = 230, L = 56, R = 12, T = 10, B = 28;
+  const all = Object.values(state.points).flat();
+  if (state.baseline) all.push(state.baseline.medianMs);
+  if (!all.length) { $('chart-svg').innerHTML = '<p class="muted">Times appear as the agents measure them.</p>'; return; }
+  const hi = Math.max(...all) * 1.3, lo = Math.max(0.5, Math.min(...all) / 1.5);
+  const maxN = Math.max(4, ...Object.values(state.points).map((p) => p.length));
+  const y = (ms) => T + (Math.log(hi) - Math.log(ms)) / (Math.log(hi) - Math.log(lo)) * (H - T - B);
+  const x = (i) => L + (i / Math.max(1, maxN - 1)) * (W - L - R);
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Best measured time per agent, log scale">`;
+  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+    const ms = 10 ** e;
+    if (ms < lo || ms > hi) continue;
+    svg += `<line x1="${L}" x2="${W - R}" y1="${y(ms)}" y2="${y(ms)}" stroke="currentColor" stroke-opacity=".18"/>`;
+    svg += `<text x="${L - 8}" y="${y(ms) + 4}" text-anchor="end" font-size="11" fill="currentColor">${fmtMs(ms)}</text>`;
+  }
+  svg += `<text x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle" font-size="11" fill="currentColor">measurement</text>`;
+  if (state.baseline) {
+    const by = y(state.baseline.medianMs);
+    svg += `<line x1="${L}" x2="${W - R}" y1="${by}" y2="${by}" stroke="currentColor" stroke-dasharray="4 4"/>`;
+    svg += `<text x="${W - R}" y="${by - 5}" text-anchor="end" font-size="11" fill="currentColor">original ${fmtMs(state.baseline.medianMs)}</text>`;
+  }
+  for (const [k, pts] of Object.entries(state.points)) {
+    let best = Infinity;
+    const path = pts.map((ms, i) => { best = Math.min(best, ms); return `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(best).toFixed(1)}`; }).join(' ');
+    const lastX = x(pts.length - 1), lastY = y(best);
+    svg += `<path d="${path}" fill="none" stroke="var(--c${k})" stroke-width="2.2"/>`;
+    svg += `<circle cx="${lastX}" cy="${lastY}" r="4" fill="var(--c${k})"/>`;
+    svg += `<text x="${lastX + 7}" y="${lastY + 4}" font-size="11" fill="var(--c${k})">${state.candidates[k]?.label ?? k}</text>`;
+  }
+  $('chart-svg').innerHTML = svg + '</svg>';
+}
+
+function drawBoard() {
+  const ks = Object.keys(state.verdicts).map(Number);
+  if (!ks.length) return;
+  $('board').hidden = false;
+  const order = state.ranking ? state.ranking.map((r) => r.k) : ks.sort((a, b) => {
+    const va = state.verdicts[a], vb = state.verdicts[b];
+    return Number(!!vb.matches) - Number(!!va.matches) || va.medianMs - vb.medianMs;
+  });
+  const base = state.baseline?.medianMs;
+  const rows = order.map((k, i) => {
+    const v = state.verdicts[k];
+    const c = state.candidates[k];
+    const valid = v.ok && v.matches;
+    const pick = el('button', { class: 'ghost' }, state.result?.k === k ? 'Winner' : 'Pick');
+    pick.disabled = !valid || !state.ranking || !!state.result;
+    pick.addEventListener('click', async () => {
+      pick.disabled = true;
+      await fetch(`/api/races/${state.raceId}/pick`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ candidate: k }) });
+    });
+    return el('tr', {},
+      el('td', {}, String(i + 1)),
+      el('td', {}, el('b', { style: `color: var(--c${k})` }, c.label)),
+      el('td', { class: 'muted' }, clipText(state.submissions[k]?.notes ?? '', 160)),
+      el('td', { class: 'num' }, v.ok ? fmtMs(v.medianMs) : '—'),
+      el('td', { class: 'num' }, valid && base ? `${Math.round(base / v.medianMs).toLocaleString()}×` : '—'),
+      el('td', {}, !v.ok ? el('span', { class: 'pill bad' }, 'Failed') : v.matches ? el('span', { class: 'pill good' }, `${v.rows}, match`) : el('span', { class: 'pill bad' }, `${v.rows}, differ`)),
+      el('td', { class: 'num' }, fmtBytes(v.indexBytes)),
+      el('td', {}, pick));
+  });
+  $('board-rows').replaceChildren(...rows);
+}
+
+function drawResult() {
+  const r = state.result;
+  const c = state.candidates[r.k];
+  $('result').hidden = false;
+  $('result-title').textContent = `${c.label} wins: ${fmtMs(r.verdict.medianMs)}, ${Math.round(r.baselineMs / r.verdict.medianMs).toLocaleString()}× faster than the original${r.reason === 'fastest' ? ' (no pick in 10 minutes, so the fastest correct one)' : ''}`;
+  $('result-migration').textContent = r.submission.migration || '-- none';
+  $('result-query').textContent = r.submission.query;
+  $('result-plan').textContent = r.verdict.plan;
+}
+
+function connect(raceId) {
+  source?.close();
+  reset(raceId);
+  $('empty').hidden = true;
+  $('race').hidden = false;
+  source = new EventSource(`/api/races/${raceId}/events`);
+  source.addEventListener('meta', (e) => {
+    const { resumed } = JSON.parse(e.data);
+    $('conn').innerHTML = `<span class="dot live"></span>${resumed ? 'Live, resumed from the last event' : 'Live, replaying from the first event'}`;
+  });
+  source.onmessage = (e) => handle(JSON.parse(e.data));
+  source.onerror = () => { $('conn').innerHTML = '<span class="dot"></span>Reconnecting…'; };
+}
+
+$('start').addEventListener('click', async () => {
+  $('start').disabled = true;
+  try {
+    const res = await fetch('/api/races', { method: 'POST' });
+    const { raceId } = await res.json();
+    location.hash = raceId;
+  } finally {
+    $('start').disabled = false;
+  }
+});
+
+const fromHash = () => { const id = location.hash.slice(1); if (/^[a-z0-9]{8}$/.test(id)) connect(id); };
+window.addEventListener('hashchange', fromHash);
+fromHash();
+</script>
+</body>
+</html>
