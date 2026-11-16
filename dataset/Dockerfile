@@ -1,5 +1,5 @@
 # The race database, baked into the image so every sandbox starts with it. PGDATA sits outside the
-# sandbox workspace: brickie snapshots only the workspace, so calls stay fast and forks stay small.
+# sandbox workspace: the sandbox snapshots only the workspace, so calls stay fast and forks stay small.
 # Build: docker build -t pgrace-seed:shop dataset
 FROM postgres:17
 ENV PGDATA=/var/lib/postgresql/race

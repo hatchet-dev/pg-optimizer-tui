@@ -1,6 +1,6 @@
-# Postgres query optimizer race
+# Postgres Optimizer TUI
 
-Four Claude agents race to make one slow Postgres query fast. Each agent gets its own Postgres sandbox and one strategy:
+This demo showcases a Postgres query optimizer tool, using hatchet sandboxes and durable streams
 
 | Agent | May change |
 |---|---|
@@ -40,8 +40,7 @@ On 200k customers and 1M orders it takes about 15 to 25 s: the correlated `min()
 
 - Node.js 22.9 or later, and pnpm
 - Docker, for the sandbox image and the sandboxes
-- A Hatchet engine that accepts sandbox providers, with a tenant API token. On a self-hosted engine, set `SERVER_GRPC_OPERATORS_ENABLED`.
-- [brickie](https://github.com/hatchet-dev/brickie), the sandbox provider. It runs the sandboxes as containers on your Docker engine.
+- A Hatchet Cloud tenant with sandboxes turned on (**Settings > Labs Preview > Sandboxes**), and a tenant API token. See [Using sandboxes](https://docs.hatchet.run/v1/sandboxes/using-sandboxes).
 - An Anthropic API key
 
 ## Run it
@@ -50,12 +49,6 @@ On 200k customers and 1M orders it takes about 15 to 25 s: the correlated `min()
 pnpm install
 pnpm image                 # builds pgrace-seed:shop: Postgres 17 with the seeded database baked in
 cp .env.example .env       # then set HATCHET_CLIENT_TOKEN and ANTHROPIC_API_KEY
-```
-
-Start the sandbox provider with the same token, in its own terminal:
-
-```bash
-HATCHET_CLIENT_TOKEN=... brickie worker
 ```
 
 Then start the race worker, and a console:
@@ -86,7 +79,7 @@ pnpm tui --replay 205e0931 --speed 4
 
 Everything the race does goes to the stream topic `race-<race>`, in order: statuses, the agents' thinking, every SQL statement and its output, submissions, verdicts and the result. The web console relays it as server-sent events with the stream cursor as the event id, so a reload resumes where it was and a new page replays the race from its first event. Every run of a race carries `race=<race id>` metadata, and the tasks log each step with `ctx.logger`, so the Hatchet dashboard shows what each one did.
 
-The database lives in the `pgrace-seed:shop` image, outside the sandbox workspace (`dataset/`). brickie snapshots the workspace after every call, so a database in it would cost about 10 s per call instead of 0.1 s. The workspace holds only `migration.sql`, which a sandbox restored after a crash replays.
+The database lives in the `pgrace-seed:shop` image, outside the sandbox workspace (`dataset/`). The sandbox snapshots the workspace after every call, so a database in it would cost about 10 s per call instead of 0.1 s. The workspace holds only `migration.sql`, which a sandbox restored after a crash replays.
 
 Token guards: tool output is clipped to 4,000 characters, and each agent gets at most 10 turns and 30k output tokens at low effort, except Open, which gets 16 turns and 60k output tokens at medium effort. `RACE_MODEL` overrides the model, `claude-opus-5-5`.
 

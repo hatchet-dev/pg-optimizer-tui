@@ -46,7 +46,7 @@ export const raceJudge = hatchet.task({
       // two runs of a slow query under the 300 s statement timeout, plus the fingerprint and the plan
       const result = await sandbox.exec(script, { timeoutMs: 900_000 });
       ctx.logger.info(`Judge script exited ${result.exitCode} after ${((Date.now() - started) / 1000).toFixed(1)} s`);
-      // seen under heavy load: the brickie run completes with an empty output; fail so the retry runs the script again
+      // seen under heavy load: the sandbox call completes with an empty output; fail so the retry runs the script again
       if (typeof result.stdout !== 'string') throw new Error(`the sandbox returned no output (exit code ${result.exitCode})`);
       const verdict: Verdict = { ...parseJudge(result.stdout + (result.stderr ?? ''), result.exitCode), runId };
       if (input.expected !== undefined) verdict.matches = verdict.ok && verdict.fingerprint === input.expected;

@@ -1,5 +1,5 @@
 // Shell snippets that drive the Postgres inside a race sandbox. The database lives in the image, outside the workspace:
-// brickie snapshots only the workspace, so a call costs about 0.1 s instead of 10 s. The workspace holds only
+// the sandbox snapshots only the workspace, so a call costs about 0.1 s instead of 10 s. The workspace holds only
 // `migration.sql`, the candidate's schema and settings changes, so a sandbox restored after a crash can replay them.
 
 export const IMAGE = process.env.RACE_IMAGE ?? 'pgrace-seed:shop';
